@@ -1,6 +1,6 @@
-# D&D Monster Research
+# Research Repository
 
-This repository contains data and analysis notebooks for Dungeons & Dragons monster statistics.
+This repository contains research data, notebooks, and results.
 
 ## Directory Structure
 
@@ -27,8 +27,4 @@ This repository contains data and analysis notebooks for Dungeons & Dragons mons
 
 ## Usage
 
-Start the Jupyter notebook server to explore the analysis:
-
-```bash
-jupyter notebook notebooks/dnd_research.ipynb
-```
+Place your data in `data/` and start your analysis in `notebooks/`.
