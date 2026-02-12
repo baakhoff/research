@@ -28,3 +28,5 @@ This repository contains research data, notebooks, and results.
 ## Usage
 
 Place your data in `data/` and start your analysis in `notebooks/`.
+
+You can download data folder from [Kaggle](https://www.kaggle.com/datasets/brandonhilkert/nasa-near-earth-objects)

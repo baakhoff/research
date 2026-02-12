@@ -1,8 +1,9 @@
-venv/
+.venv/
 __pycache__/
 .ipynb_checkpoints
 .DS_Store
 *.pyc
 .env
-media
-pesonal_data
+media/
+pesonal_data/
+data/
