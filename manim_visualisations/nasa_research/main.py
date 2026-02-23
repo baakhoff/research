@@ -4,14 +4,54 @@ import os
 import sys
 import json
 
+script_dir = os.path.dirname(__file__)
+csv_path = os.path.join(script_dir, '../../data/nasa_data/all_neos.csv')
+all_neos_df = pd.read_csv(csv_path)
+
+all_neos_df['estimated_diameter_meters_max'] = all_neos_df.estimated_diameter.apply(
+    lambda x: round(json.loads(x.replace("'", '"'))['kilometers']['estimated_diameter_max'] * 1000, 2)
+    if isinstance(x, str) else None
+)
+
+all_neos_df['close_approach_data_parsed'] = (
+    all_neos_df['close_approach_data']
+    .str.replace("'", '"', regex=False)
+    .apply(json.loads)
+)
+
+exploded_df = all_neos_df.explode('close_approach_data_parsed')
+
+cad_normalized = pd.json_normalize(exploded_df['close_approach_data_parsed'])
+cad_normalized
+
+cad_normalized.index = exploded_df.index
+
+cad_normalized['relative_velocity_kph'] = pd.to_numeric(
+    cad_normalized['relative_velocity.kilometers_per_hour'])
+cad_normalized['miss_distance_meters'] = pd.to_numeric(
+    cad_normalized['miss_distance.kilometers']) * 1000
+
+child_cols = ['close_approach_date','close_approach_date_full',
+            'orbiting_body',
+            'relative_velocity_kph', 'miss_distance_meters']
+final_child_data = cad_normalized[child_cols]
+
+parent_cols = [
+    'neo_reference_id', 'id', 'name', 'absolute_magnitude_h',
+    'is_sentry_object', 'estimated_diameter_meters_max',
+    'is_potentially_hazardous_asteroid'
+]
+
+close_approach_data = final_child_data.join(all_neos_df[parent_cols])
+
+# Reset index for a clean final dataframe
+close_approach_data.reset_index(drop=True, inplace=True)
+close_approach_data.head()
+
+
 class abs_mag_distribution(Scene):
     def construct(self):
         try:
-            # Fix: Use absolute path relative to this script
-            script_dir = os.path.dirname(__file__)
-            csv_path = os.path.join(script_dir, '../../data/nasa_data/all_neos.csv')
-            all_neos_df = pd.read_csv(csv_path)
-            
             stats = all_neos_df['absolute_magnitude_h'].dropna()
             
             # Calculate distribution (histogram) showing count for each magnitude (rounded)
@@ -50,7 +90,7 @@ class abs_mag_distribution(Scene):
             # Add labels on top of each bar
             bar_labels = VGroup()
             for bar, count in zip(chart.bars, counts):
-                label = Text(str(int(count)), font_size=14, font="Momo Trust Display")
+                label = Text(str(int(count)), font_size=14, font="Momo Trust Display", disable_ligatures=True)
                 label.rotate(PI / 2)  # 90 degrees counterclockwise
                 label.next_to(bar, UP, buff=0.15)
                 bar_labels.add(label)
@@ -126,7 +166,7 @@ class hazardous_size_distribution(Scene):
         # Bar value labels
         bar_labels = VGroup()
         for bar, count in zip(chart.bars, counts):
-            label = Text(str(int(count)), font_size=11, font="Momo Trust Display")
+            label = Text(str(int(count)), font_size=11, font="Momo Trust Display", disable_ligatures=True)
             label.rotate(PI / 2)
             label.next_to(bar, UP, buff=0.1)
             bar_labels.add(label)
@@ -144,14 +184,6 @@ class hazardous_size_distribution(Scene):
 
     def construct(self):
         try:
-            script_dir = os.path.dirname(__file__)
-            csv_path = os.path.join(script_dir, '../../data/nasa_data/all_neos.csv')
-            all_neos_df = pd.read_csv(csv_path)
-            all_neos_df['estimated_diameter_meters_max'] = all_neos_df.estimated_diameter.apply(
-                lambda x: round(json.loads(x.replace("'", '"'))['kilometers']['estimated_diameter_max'] * 1000, 2)
-                if isinstance(x, str) else None
-            )
-
             # --- Top chart: Hazardous ---
             chart_haz = self._make_chart(all_neos_df, True)
             chart_haz.scale(0.65)
@@ -175,6 +207,80 @@ class hazardous_size_distribution(Scene):
             self.play(Write(title))
             self.play(Create(chart_haz), Write(subtitle_haz))
             self.play(Create(chart_safe), Write(subtitle_safe))
+            self.wait(2)
+        except Exception as e:
+            print(f"Error: {e}")
+            text = Text(f"Error: {str(e)}", font_size=24, color=RED)
+            self.add(text)
+
+class orbiting_body_distribution(Scene):
+    def construct(self):
+        try:
+            stats = close_approach_data.groupby('orbiting_body')['neo_reference_id'].nunique().sort_index()
+            
+            names = [str(val) for val in stats.index]
+            counts = stats.values.tolist()
+            
+            y_max = max(counts) if counts else 1
+            y_step = max(1, int(y_max // 5))
+            
+            # Create chart
+            chart = BarChart(
+                values=counts,
+                bar_names=names,
+                y_range=[0, y_max * 1.1, y_step],
+                y_length=6,
+                x_length=10,
+                x_axis_config={"font_size": 24},
+            )
+            
+            # Explicitly replace default Tex labels with Text labels using the custom font
+            new_x_labels = VGroup(*[Text(name, font_size=15, font="Momo Trust Display") for name in names])
+            for old_lbl, new_lbl in zip(chart.x_axis.labels, new_x_labels):
+                new_lbl.move_to(old_lbl)
+            chart.x_axis.labels.become(new_x_labels)
+
+            new_y_labels = VGroup() 
+            for num in chart.y_axis.numbers:
+                # Use get_value() if it's a DecimalNumber, otherwise use its string representation
+                val = int(round(num.get_value())) if hasattr(num, 'get_value') else num.tex_strings[0]
+                new_lbl = Text(str(val), font_size=15, font="Momo Trust Display")
+                new_lbl.move_to(num)
+                new_y_labels.add(new_lbl)
+            chart.y_axis.numbers.become(new_y_labels)
+            
+            # Add labels on top of each bar
+            bar_labels = VGroup()
+            for bar, count in zip(chart.bars, counts):
+                label = Text(str(int(count)), font_size=14, font="Arial", disable_ligatures=True)
+                #label.rotate(PI / 2)  # 90 degrees counterclockwise
+                label.next_to(bar, UP, buff=0.15)
+                bar_labels.add(label)
+            
+            # Added to chart so it scales and animates along with it
+            chart.add(bar_labels)
+            
+            # Axis labels
+            x_label = Text("Orbiting Body", font_size=24, font="Momo Trust Display")
+            y_label = Text("Number of Asteroids", font_size=24, font="Momo Trust Display")
+            x_label.next_to(chart.x_axis, DOWN, buff=0.4)
+            y_label.rotate(PI / 2)
+            y_label.next_to(chart.y_axis, LEFT, buff=0.5)
+            chart.add(x_label, y_label)
+
+            # Scale chart to fit nicely on screen
+            chart.scale(0.8)
+            chart.shift(DOWN * 0.5)
+
+            # # Title
+            title = VGroup(
+                Text("Distribution of Orbiting Body", font_size=36, font='Momo Trust Display'),
+                Text("of Near Earth Objects", font_size=36, font='Momo Trust Display')
+            ).arrange(DOWN, buff=0.1)
+            title.to_edge(UP)
+
+            self.play(Create(chart))
+            self.play(Write(title))
             self.wait(2)
         except Exception as e:
             print(f"Error: {e}")
