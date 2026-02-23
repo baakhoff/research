@@ -286,3 +286,139 @@ class orbiting_body_distribution(Scene):
             print(f"Error: {e}")
             text = Text(f"Error: {str(e)}", font_size=24, color=RED)
             self.add(text)
+
+class orbiting_body_hazardous(Scene):
+    def construct(self):
+        try:
+            # ── Data ──────────────────────────────────────────────────────────
+            raw = (
+                close_approach_data
+                .groupby(['orbiting_body', 'is_potentially_hazardous_asteroid'])['neo_reference_id']
+                .nunique()
+                .unstack(fill_value=0)
+            )
+            pct = raw.div(raw.sum(axis=1), axis=0) * 100
+            bodies = pct.index.tolist()
+            haz_pct  = [float(pct.loc[b, True])  if True  in pct.columns else 0.0 for b in bodies]
+            safe_pct = [float(pct.loc[b, False]) if False in pct.columns else 0.0 for b in bodies]
+
+            # ── Layout constants ──────────────────────────────────────────────
+            n          = len(bodies)
+            chart_h    = 4.8          # height = 100 %
+            chart_bot  = -2.6
+            bar_w      = min(0.65, 8.5 / n - 0.12)
+            gap        = 0.12
+            total_w    = n * (bar_w + gap) - gap
+            x_offset   = -total_w / 2  # left edge of first bar
+            axis_x     = x_offset - 0.35
+
+            HAZ_COLOR  = "#E53935"
+            SAFE_COLOR = "#43A047"
+            FONT       = "Momo Trust Display"
+
+            # ── Bars ──────────────────────────────────────────────────────────
+            bars_group   = VGroup()
+            xlbls_group  = VGroup()
+            pct_labels   = VGroup()
+
+            for i, (body, hp, sp) in enumerate(zip(bodies, haz_pct, safe_pct)):
+                cx = x_offset + i * (bar_w + gap) + bar_w / 2
+
+                h_safe = sp / 100 * chart_h
+                h_haz  = hp / 100 * chart_h
+
+                # Safe / not-hazardous (bottom segment)
+                if h_safe > 1e-3:
+                    r_safe = Rectangle(
+                        width=bar_w, height=h_safe,
+                        fill_color=SAFE_COLOR, fill_opacity=0.9, stroke_width=0
+                    ).move_to([cx, chart_bot + h_safe / 2, 0])
+                    bars_group.add(r_safe)
+
+                # Hazardous (top segment)
+                if h_haz > 1e-3:
+                    r_haz = Rectangle(
+                        width=bar_w, height=h_haz,
+                        fill_color=HAZ_COLOR, fill_opacity=0.9, stroke_width=0
+                    ).move_to([cx, chart_bot + h_safe + h_haz / 2, 0])
+                    bars_group.add(r_haz)
+
+                    # % label inside hazardous segment (only if segment is tall enough)
+                    if h_haz > 0.25:
+                        pl = Text(f"{hp:.0f}%", font_size=10, font=FONT,
+                                  disable_ligatures=True, color=WHITE)
+                        pl.move_to([cx, chart_bot + h_safe + h_haz / 2, 0])
+                        pct_labels.add(pl)
+
+                # X-axis label (rotated)
+                lbl = Text(body, font_size=11, font=FONT)
+                lbl.rotate(-PI / 4)
+                lbl.next_to([cx, chart_bot, 0], DOWN, buff=0.18)
+                xlbls_group.add(lbl)
+
+            # ── Axes ──────────────────────────────────────────────────────────
+            y_axis = Line(
+                [axis_x, chart_bot, 0],
+                [axis_x, chart_bot + chart_h, 0],
+                color=GREY
+            )
+            x_axis_line = Line(
+                [axis_x, chart_bot, 0],
+                [axis_x + total_w + bar_w, chart_bot, 0],
+                color=GREY
+            )
+
+            # ── Y ticks & labels ──────────────────────────────────────────────
+            ticks_group = VGroup()
+            gridlines   = VGroup()
+            for pv in [0, 25, 50, 75, 100]:
+                y = chart_bot + pv / 100 * chart_h
+                tick = Line([axis_x - 0.12, y, 0], [axis_x, y, 0], color=GREY)
+                tlbl = Text(f"{pv}%", font_size=12, font=FONT)
+                tlbl.next_to([axis_x - 0.12, y, 0], LEFT, buff=0.08)
+                ticks_group.add(tick, tlbl)
+                if pv > 0:
+                    gl = DashedLine(
+                        [axis_x, y, 0],
+                        [axis_x + total_w + bar_w, y, 0],
+                        color=GREY, stroke_opacity=0.3
+                    )
+                    gridlines.add(gl)
+
+            # ── Y-axis label ──────────────────────────────────────────────────
+            y_label = Text("% of Asteroids", font_size=15, font=FONT)
+            y_label.rotate(PI / 2)
+            y_label.next_to(y_axis, LEFT, buff=1)
+
+            # ── Legend ────────────────────────────────────────────────────────
+            def legend_item(color, label):
+                box = Rectangle(width=0.25, height=0.25,
+                                 fill_color=color, fill_opacity=0.9, stroke_width=0)
+                txt = Text(label, font_size=16, font=FONT, disable_ligatures=True)
+                return VGroup(box, txt).arrange(RIGHT, buff=0.12)
+
+            legend = VGroup(
+                legend_item(HAZ_COLOR,  "Hazardous"),
+                legend_item(SAFE_COLOR, "Not Hazardous"),
+            ).arrange(RIGHT, buff=0.5)
+
+            # ── Title ─────────────────────────────────────────────────────────
+            title = Text(
+                "Hazardous vs Safe Asteroids by Orbiting Body",
+                font_size=28, font=FONT
+            )
+            title.to_edge(UP, buff=0.2)
+            legend.next_to(title, DOWN, buff=0.18)
+
+            # ── Animate ───────────────────────────────────────────────────────
+            self.play(Write(title), Write(legend))
+            self.play(Create(y_axis), Create(x_axis_line),
+                      Create(ticks_group), Create(gridlines))
+            self.play(Create(bars_group), Write(xlbls_group), Write(y_label))
+            self.play(Write(pct_labels))
+            self.wait(2)
+
+        except Exception as e:
+            print(f"Error: {e}")
+            text = Text(f"Error: {str(e)}", font_size=24, color=RED)
+            self.add(text)
