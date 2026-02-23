@@ -504,3 +504,85 @@ class neo_by_year(Scene):
             print(f"Error: {e}")
             text = Text(f"Error: {str(e)}", font_size=24, color=RED)
             self.add(text)
+
+class hazardous_neo_by_year(Scene):
+    def construct(self):
+        try:
+            # ── Data (hazardous only) ──────────────────────────────────────────
+            df = close_approach_data[
+                close_approach_data['is_potentially_hazardous_asteroid'] == True
+            ].copy()
+            df['year'] = pd.to_datetime(df['close_approach_date']).dt.year
+            stats = (
+                df
+                .groupby('year')['neo_reference_id']
+                .nunique()
+                .sort_index()
+            )
+            years  = stats.index.tolist()
+            counts = stats.values.tolist()
+
+            FONT = "Momo Trust Display"
+
+            # ── Axes ──────────────────────────────────────────────────────────
+            x_min, x_max = years[0],  years[-1]
+            y_min, y_max = 0,          max(counts) * 1.1
+
+            ax = Axes(
+                x_range=[x_min, x_max, max(1, (x_max - x_min) // 10)],
+                y_range=[y_min, y_max, max(1, int(y_max // 6))],
+                x_length=11,
+                y_length=5.5,
+                axis_config={"include_tip": False, "color": GREY},
+            )
+
+            # ── Custom tick labels ─────────────────────────────────────────────
+            x_lbls = VGroup()
+            step = max(1, len(years) // 10)
+            for yr in years[::step]:
+                pt = ax.c2p(yr, 0)
+                lbl = Text(str(int(yr)), font_size=13, font=FONT)
+                lbl.rotate(-PI / 4)
+                lbl.next_to(pt, DOWN, buff=0.25)
+                x_lbls.add(lbl)
+
+            y_lbls = VGroup()
+            y_step = max(1, int(y_max // 6))
+            for v in range(0, int(y_max), y_step):
+                pt = ax.c2p(x_min, v)
+                lbl = Text(str(v), font_size=13, font=FONT)
+                lbl.next_to(pt, LEFT, buff=0.1)
+                y_lbls.add(lbl)
+
+            # ── Line ──────────────────────────────────────────────────────────
+            points = [ax.c2p(yr, ct) for yr, ct in zip(years, counts)]
+            line = VMobject(color="#E53935", stroke_width=2.5)
+            line.set_points_smoothly(points)
+
+            # ── Axis labels ───────────────────────────────────────────────────
+            x_label = Text("Year", font_size=18, font=FONT)
+            x_label.next_to(ax.x_axis, DOWN, buff=0.9)
+
+            y_label = Text("Unique Hazardous Asteroids", font_size=18, font=FONT)
+            y_label.rotate(PI / 2)
+            y_label.next_to(ax.y_axis, LEFT, buff=1.1)
+
+            # ── Title ─────────────────────────────────────────────────────────
+            title = Text(
+                "Potentially Hazardous NEOs per Year",
+                font_size=30, font=FONT
+            )
+            title.to_edge(UP, buff=0.25)
+
+            # ── Animate ───────────────────────────────────────────────────────
+            self.play(Write(title))
+            self.play(Create(ax), Write(x_lbls), Write(y_lbls),
+                      Write(x_label), Write(y_label))
+            self.play(Create(line), run_time=2)
+            self.wait(2)
+
+        except Exception as e:
+            print(f"Error: {e}")
+            text = Text(f"Error: {str(e)}", font_size=24, color=RED)
+            self.add(text)
+
